@@ -1,0 +1,152 @@
+﻿@using System.Dynamic
+@using System.Text
+@using Newtonsoft.Json
+
+@page "/translator"
+
+@if (isReady)
+{
+    <div class="row">
+        <div class="col-xs-12 col-sm-12 col-md-6 col-lg-6 col-xl-6">
+            <div class="input-group mt-3">
+                <div class="input-group-prepend">
+                    <span class="input-group-text" id="basic-addon1">From</span>
+                </div>
+                <select class="form-control" aria-describedby="basic-addon1" @onchange="SetFromLang">
+                    <option value="" selected="@string.IsNullOrEmpty(fromLang)">Auto-detect</option>
+                    @foreach (var lang in languages)
+                    {
+                        <option value="@lang.Key" selected="@lang.Key.Equals(fromLang)">@lang.Value</option>
+                    }
+                </select>
+            </div>
+            <textarea class="form-control mt-2" rows="5" dir="@fromDir" @onchange="SetFromText">@fromText</textarea>
+        </div>
+        <div class="col-xs-12 col-sm-12 col-md-6 col-lg-6 col-xl-6">
+            <div class="input-group mt-3">
+                <div class="input-group-prepend">
+                    <span class="input-group-text" id="basic-addon2">To</span>
+                </div>
+                <select class="form-control" aria-describedby="basic-addon2" @onchange="SetToLang">
+                    @foreach (var lang in languages)
+                    {
+                        <option value="@lang.Key" selected="@lang.Key.Equals(toLang)">@lang.Value</option>
+                    }
+                </select>
+            </div>
+            <textarea class="form-control mt-2" rows="5" dir="@toDir" @onchange="SetToText" readonly>@toText</textarea>
+        </div>
+    </div>
+    <button class="btn btn-primary form-control mt-3" @onclick="Translate" disabled="@isBusy">
+        @(isBusy ? "Translating..." : "Translate it!")
+    </button>
+}
+
+@code {
+    private bool isReady;
+    private bool isBusy;
+
+    private Dictionary<string, string> languages = new Dictionary<string, string>();
+    private Dictionary<string, string> directions = new Dictionary<string, string>();
+
+    private string fromLang = string.Empty;
+    private string fromText = string.Empty;
+    private string fromDir = string.Empty;
+
+    private string toLang = string.Empty;
+    private string toText = string.Empty;
+    private string toDir = string.Empty;
+
+    private static readonly string key = "44441876bb3742dc9fee40e5c213c624";
+
+    private static readonly string endpoint = "https://api.cognitive.microsofttranslator.com";
+
+    // location, also known as region.
+    // required if you're using a multi-service or regional (not global) resource. 
+    // It can be found in the Azure portal on the Keys and Endpoint page.
+    private static readonly string location = "westus3";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var result = string.Empty;
+            using (var client = new HttpClient())
+            {
+                var response = await client.GetAsync($"{endpoint}/languages?api-version=3.0").ConfigureAwait(false);
+                result = await response.Content.ReadAsStringAsync();
+            }
+            dynamic obj = JsonConvert.DeserializeObject<Dictionary<string, object>>(result);
+            var translation = ((Dictionary<string, object>)obj)["translation"];
+            foreach (var lang in JsonConvert.DeserializeObject<Dictionary<string, object>>(JsonConvert.SerializeObject(translation)))
+            {
+                var k = lang.Key;
+                var v = JsonConvert.DeserializeObject<Dictionary<string, string>>(JsonConvert.SerializeObject(lang.Value));
+                languages.Add(k, v["name"]);
+                directions.Add(k, v["dir"]);
+            }
+
+            fromText = "hello world";
+            toLang = "ar";
+            toDir = directions[toLang];
+        }
+
+        isReady = true;
+        await this.InvokeAsync(() => this.StateHasChanged());
+    }
+
+    private void SetFromLang(ChangeEventArgs e) 
+    {
+        fromLang = e.Value.ToString();
+        fromDir = directions[fromLang];
+    }
+
+    private void SetFromText(ChangeEventArgs e) => fromText = e.Value.ToString();
+
+    private void SetToLang(ChangeEventArgs e) 
+    {
+        toLang = e.Value.ToString();
+        //toDir = directions[toLang];
+    }
+
+    private void SetToText(ChangeEventArgs e) => toText = e.Value.ToString();
+
+    private async Task<string> GetTranslation(string from, string to, string text)
+    {
+        var body = JsonConvert.SerializeObject(new object[]
+        {
+            new
+            {
+                Text = text
+            }
+        });
+
+        var translateFrom = string.IsNullOrEmpty(from) ? string.Empty : $"&from={from}";
+        var result = string.Empty;
+        using (var client = new HttpClient())
+        {
+            using (var request = new HttpRequestMessage())
+            {
+                request.Method = HttpMethod.Post;
+                request.RequestUri = new Uri($"{endpoint}/translate?api-version=3.0{translateFrom}&to={to}&textType=plain&includeAlignment=true");
+                request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+                request.Headers.Add("Ocp-Apim-Subscription-Key", key);
+                request.Headers.Add("Ocp-Apim-Subscription-Region", location);
+
+                var response = await client.SendAsync(request).ConfigureAwait(false);
+                result = await response.Content.ReadAsStringAsync();
+            }
+        }
+        return result;
+    }
+
+    private async void Translate()
+    {
+        isBusy = true;
+        var translation = await GetTranslation(fromLang, toLang, fromText);
+        dynamic translations = JsonConvert.DeserializeObject<Dictionary<string, object>>(JsonConvert.SerializeObject(JsonConvert.DeserializeObject<object[]>(translation)[0]))["translations"];
+        toText = JsonConvert.DeserializeObject<Dictionary<string, object>>(JsonConvert.SerializeObject(JsonConvert.DeserializeObject<object[]>(JsonConvert.SerializeObject(translations))[0]))["text"];
+        toDir = directions[toLang];
+        isBusy = false;
+    }
+}
