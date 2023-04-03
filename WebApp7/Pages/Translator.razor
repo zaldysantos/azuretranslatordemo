@@ -1,4 +1,4 @@
-﻿@using System.Dynamic
+@using System.Dynamic
 @using System.Text
 @using Newtonsoft.Json
 
@@ -57,18 +57,18 @@
     private string toText = string.Empty;
     private string toDir = string.Empty;
 
-    private static readonly string key = "44441876bb3742dc9fee40e5c213c624";
+    private static readonly string key = "(your key goes here)"; // ToDo
 
     private static readonly string endpoint = "https://api.cognitive.microsofttranslator.com";
 
     // location, also known as region.
     // required if you're using a multi-service or regional (not global) resource. 
     // It can be found in the Azure portal on the Keys and Endpoint page.
-    private static readonly string location = "westus3";
+    private static readonly string location = "(your location goes here)"; // ToDo
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (firstRender) // get all supported languages
         {
             var result = string.Empty;
             using (var client = new HttpClient())
@@ -110,7 +110,7 @@
     }
 
     private void SetToText(ChangeEventArgs e) => toText = e.Value.ToString();
-
+    // get translations
     private async Task<string> GetTranslation(string from, string to, string text)
     {
         var body = JsonConvert.SerializeObject(new object[]
@@ -120,7 +120,7 @@
                 Text = text
             }
         });
-
+        // default to auto-detect
         var translateFrom = string.IsNullOrEmpty(from) ? string.Empty : $"&from={from}";
         var result = string.Empty;
         using (var client = new HttpClient())
@@ -132,14 +132,13 @@
                 request.Content = new StringContent(body, Encoding.UTF8, "application/json");
                 request.Headers.Add("Ocp-Apim-Subscription-Key", key);
                 request.Headers.Add("Ocp-Apim-Subscription-Region", location);
-
                 var response = await client.SendAsync(request).ConfigureAwait(false);
                 result = await response.Content.ReadAsStringAsync();
             }
         }
         return result;
     }
-
+    // Translate it!
     private async void Translate()
     {
         isBusy = true;
